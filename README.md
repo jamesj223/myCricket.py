@@ -28,3 +28,9 @@ Quite a bit still to do, including:
 Also want to clean up/restructure the code a bit, and potentially rewrite the scraping stuff to use Scrapy library.
 
 and add argparse and logging.
+
+And a maaaaybe a web ui and host it somewhere, so other people can use it easily.
+Or a browser extension? Right click on a player on the MyCricket site and get all this info? 
+
+Hopefully this isn't breaching any MyCricket T's & C's...
+
