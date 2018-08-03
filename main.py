@@ -41,8 +41,6 @@ if fetch:
 
 	matchList = getMatchList(playerID, clubID, seasonList)
 
-	#print matchList
-
 	print "Matches found: " + str(len(matchList))
 
 	populateDatabaseFirstPass(playerID,clubID,seasonList)
@@ -53,6 +51,20 @@ if fetch:
 
 if analysis:
 
+	# Normal Stats
+
 	stats_Overall(playerID)
 
 	stats_Season(playerID, clubID)
+
+	stats_DismissalBreakdown(playerID)
+
+	stats_Position(playerID)
+
+	stats_Opponent(playerID)
+
+	stats_Grade(playerID)
+
+	stats_HomeOrAway(playerID)
+
+	# Fun Stats
