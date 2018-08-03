@@ -279,7 +279,7 @@ def populateDatabaseFirstPass(playerID, clubID, seasonList):
 
 				Round = tds[1].string
 
-				opponent = tds[3].select("span")[0].string
+				opponent = tds[3].select("span")[0].string.replace("'","")
 
 				ground = unknown
 
@@ -436,10 +436,10 @@ def populateDatabaseThirdPass(playerID, clubID, matchList):
 
 # Calculate and return batting stats for a list of innings
 def getBattingStats(inningsList):
-	headers = ("Innings", "High Score", "Not Outs", "Ducks", "50s", "100s", "Aggregate", "Average")
+	headers = ("Innings", "High Score", "Not Outs", "Ducks", "25s", "50s", "100s", "Aggregate", "Average")
 
 	# Initialise and zero all variables
-	numInnings = highScore = notOuts = ducks = fifties = hundreds = aggregate = 0
+	numInnings = highScore = notOuts = ducks = twentyFives = fifties = hundreds = aggregate = 0
 	average = 0.0
 
 	# Iterate over innings list
@@ -456,6 +456,9 @@ def getBattingStats(inningsList):
 		if innings[3] == 0 and innings[5] != 'no':
 			ducks += 1
 
+		if innings[3] >= 25 and innings[3] < 50:
+			twentyFives += 1
+
 		if innings[3] >= 50 and innings[3] < 100:
 			fifties += 1
 
@@ -465,25 +468,33 @@ def getBattingStats(inningsList):
 		aggregate += innings[3]
 
 	# Calculate Batting Average (rounded to 2 decimal places)
-	rawAverage = aggregate / (numInnings - notOuts) 
-	average = round(rawAverage, 2)
+	try:
+		rawAverage = aggregate / (numInnings - notOuts) 
+	
+		average = round(rawAverage, 2)
+	except ZeroDivisionError:
+		average = "N/A"
+
 
 	# Compile stats into tuple
-	stats = (numInnings, highScore, notOuts, ducks, fifties, hundreds, aggregate, average)
+	stats = (numInnings, highScore, notOuts, ducks, twentyFives, fifties, hundreds, aggregate, average)
 
 	return headers, stats
 
 # Print function
 def printStats(headers, stats):
-	mode = "Horizontal"
+	mode = "V"#"Horizontal"
 
-	if mode == "Horizontal":
-		print headers
-		print stats
+	if mode == "H":#"Horizontal":
+		if headers:
+			print headers
+		if stats:
+			print stats
 
-	elif mode == "Vertical":
-		for i in range(len(headers)):
-			print headers[i] + ': ' + str( stats[i] )
+	elif mode == "V":#"Vertical":
+		if headers and stats:
+			for i in range(len(headers)):
+				print headers[i] + ': ' + str( stats[i] )
 
 	print ""
 
@@ -505,13 +516,13 @@ def stats_Overall(playerID):
 def stats_Season(playerID, clubID):
 	playerDB = "Player Databases/" + str(playerID) + ".db"
 
-	print "Stats by Season"	
+	print "Stats by Season\n"
 
 	seasonList = dbQuery(playerDB, "SELECT DISTINCT Season FROM Matches")
 
 	for season in seasonList:
 
-		print season
+		print season[0]
 
 		matchList = dbQuery(playerDB, "SELECT MatchID FROM Matches WHERE Season='" + season[0] + "'")
 
@@ -525,31 +536,107 @@ def stats_Season(playerID, clubID):
 		# Print stats
 		printStats(headers, stats)
 
+# Batting stats by DismissalBreakdown
+def stats_DismissalBreakdown(playerID):
+	playerDB = "Player Databases/" + str(playerID) + ".db"
 
-# Batting stats by Opponent
-def stats_Opponent(playerID):
-	print "TODO"
+	print "Dismissal Breakdown\n"
 
-# Batting stats by HomeOrAway
-def stats_HomeOrAway(playerID):
-	print "TODO"
+	dismissalStats = dbQuery(playerDB, "SELECT HowDismissed, COUNT(*) as Count from Batting GROUP BY HowDismissed ORDER BY Count DESC")
+
+	headers = [ str(i[0]) for i in dismissalStats ]
+
+	stats = [ i[1] for i in dismissalStats ]
+
+	# Replace this with better print
+	# Include % of innings and % of dismissals
+	printStats(headers, stats)
 
 # Batting stats by Batting Position
 def stats_Position(playerID):
-	print "TODO"
+	playerDB = "Player Databases/" + str(playerID) + ".db"
+
+	print "Batting Position\n"
+
+	print "Opening"
+	inningsList = dbQuery(playerDB, "SELECT * FROM Batting WHERE Position IN (1,2)") 
+	headers, stats = getBattingStats(inningsList)
+	printStats(headers, stats)
+
+	for i in range(3,12):
+		print "#" + str(i)
+		inningsList = dbQuery(playerDB, "SELECT * FROM Batting WHERE Position="+str(i)) 
+		headers, stats = getBattingStats(inningsList)
+		printStats(headers, stats)
+
+# Batting stats by Opponent
+def stats_Opponent(playerID):
+	playerDB = "Player Databases/" + str(playerID) + ".db"
+
+	print "Stats by Opponent\n"	
+
+	opponentList = dbQuery(playerDB, "SELECT DISTINCT Opponent FROM Matches ORDER BY Opponent ASC")
+
+	for opponent in opponentList:
+
+		print opponent[0]
+
+		matchList = dbQuery(playerDB, "SELECT MatchID FROM Matches WHERE Opponent='" + opponent[0] + "'")
+
+		formattedMatchList = "(" + ','.join( [str( i[0] ) for i in matchList] ) + ")"
+
+		inningsList = dbQuery(playerDB, "SELECT * FROM Batting WHERE MatchID IN " + formattedMatchList) 
+		headers, stats = getBattingStats(inningsList)
+		printStats(headers, stats)
+
+# Batting stats by Grade
+def stats_Grade(playerID):
+	playerDB = "Player Databases/" + str(playerID) + ".db"
+
+	print "Stats by Grade\n"	
+
+	gradeList = dbQuery(playerDB, "SELECT DISTINCT Grade FROM Matches ORDER BY Grade ASC")
+
+	for grade in gradeList:
+
+		print grade[0]
+
+		matchList = dbQuery(playerDB, "SELECT MatchID FROM Matches WHERE Grade='" + grade[0] + "'")
+
+		formattedMatchList = "(" + ','.join( [str( i[0] ) for i in matchList] ) + ")"
+
+		inningsList = dbQuery(playerDB, "SELECT * FROM Batting WHERE MatchID IN " + formattedMatchList) 
+		headers, stats = getBattingStats(inningsList)
+		printStats(headers, stats)
+
+# Batting stats by HomeOrAway
+def stats_HomeOrAway(playerID):
+	playerDB = "Player Databases/" + str(playerID) + ".db"
+
+	print "Stats by Home/Away\n"
+
+	print "Home"
+	matchList = seasonList = dbQuery(playerDB, "SELECT MatchID FROM Matches WHERE HomeOrAway='Home'")
+	formattedMatchList = "(" + ','.join( [str( i[0] ) for i in matchList] ) + ")"
+	inningsList = dbQuery(playerDB, "SELECT * FROM Batting WHERE MatchID IN " + formattedMatchList) 
+	headers, stats = getBattingStats(inningsList)
+	printStats(headers, stats)
+
+	print "Away"
+	matchList = seasonList = dbQuery(playerDB, "SELECT MatchID FROM Matches WHERE HomeOrAway='Away'")
+	formattedMatchList = "(" + ','.join( [str( i[0] ) for i in matchList] ) + ")"
+	inningsList = dbQuery(playerDB, "SELECT * FROM Batting WHERE MatchID IN " + formattedMatchList) 
+	headers, stats = getBattingStats(inningsList)
+	printStats(headers, stats)
+
 
 # Batting stats by NohitBrohitLine
 def stats_NohitBrohitLine(playerID):
 	print "TODO"
 
-# Batting stats by DismissalBreakdown
-def stats_DismissalBreakdown(playerID):
+# Batting stats by Bingo
+def stats_Bingo(playerID):
 	print "TODO"
-
-# Batting stats by Grade
-def stats_Grade(playerID):
-	print "TODO"
-
 
 ## Need Fetch Pass 2
 
@@ -564,7 +651,7 @@ def stats_PercentOfTeamScore(playerID):
 ## Need Fetch Pass 3
 
 # Batting stats by TeamMate
-def stats_TeamMate(playerID):
+def stats_TeamMate(playerID, minGames):
 	print "TODO"
 
 ## Need Additional Information
