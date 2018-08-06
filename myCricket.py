@@ -9,18 +9,26 @@ from __future__ import division
 
 import os, requests, bs4, re, sqlite3, time
 
+from numpy import median
+
 ###############################################################################
 # DB Schemas
 
 playerInfoTable = "PlayerInfo (PlayerID INTEGER PRIMARY KEY, FirstName TEXT, LastName TEXT, NumMatches INTEGER)"
 
-matchesTable = "Matches (MatchID INTEGER PRIMARY KEY, Season TEXT, Round INTEGER, Grade TEXT, Opponent TEXT, Ground TEXT, HomeOrAway TEXT, WinOrLoss TEXT, FullScorecardAvailable TEXT)"#, TeamMates)"
+clubsTable = "Clubs (ClubID INTEGER PRIMARY KEY, ClubName TEXT)"
+
+matchesTable = "Matches (MatchID INTEGER PRIMARY KEY, ClubID INTEGER, Season TEXT, Round INTEGER, Grade TEXT, Opponent TEXT, Ground TEXT, HomeOrAway TEXT, WinOrLoss TEXT, FullScorecardAvailable TEXT, Captain TEXT, FOREIGN KEY (ClubID) REFERENCES Clubs(ClubID))"
 
 battingTable = "Batting (BattingInningsID INTEGER PRIMARY KEY, MatchID INTEGER, Innings INTEGER, Runs INTEGER, Position INTEGER, HowDismissed TEXT, Fours INTEGER, Sixes INTEGER, TeamWicketsLost INTEGER, TeamScore INTEGER, TeamOversFaced TEXT, FOREIGN KEY (MatchID) REFERENCES Matches(MatchID))"
 
 bowlingTable = "Bowling (BowlingInningsID INTEGER PRIMARY KEY, MatchID INTEGER, Innings INTEGER, Overs TEXT, Wickets INTEGER, Runs INTEGER, Maidens INTEGER, FOREIGN KEY (MatchID) REFERENCES Matches(MatchID))"
 
 fieldingTable = "Fielding (FieldingInningsID INTEGER PRIMARY KEY, MatchID INTEGER, Catches INTEGER, RunOuts INTEGER, FOREIGN KEY (MatchID) REFERENCES Matches(MatchID))"
+
+
+
+# Not Yet Implemented
 
 teamMatesTable = "TeamMates (PlayerID INTEGER PRIMARY KEY, FirstName TEXT, LastName Text)"
 
@@ -73,6 +81,7 @@ def createDatabase(playerID, wipe=False):
 
 	if wipe:
 		c.execute("DROP TABLE IF EXISTS PlayerInfo;")
+		c.execute("DROP TABLE IF EXISTS Clubs;")
 		c.execute("DROP TABLE IF EXISTS Matches;")
 		c.execute("DROP TABLE IF EXISTS Batting;")
 		c.execute("DROP TABLE IF EXISTS Bowling;")
@@ -88,6 +97,11 @@ def createDatabase(playerID, wipe=False):
 	conn.commit()
 	if debug:
 		print "Created table: PlayerInfo" 
+
+	c.execute("CREATE TABLE IF NOT EXISTS " + clubsTable + ";")
+	conn.commit()
+	if debug:
+		print "Created table: Clubs" 
 
 	# Matches - Teammates Extracted out into Join Table?
 	c.execute("CREATE TABLE IF NOT EXISTS " + matchesTable + ";")
@@ -135,9 +149,9 @@ def dbQuery(database, query, values=() ):
 	return returnValue
 
 # Fetches player info, and populates the PlayerInfo table
-def fetchPlayerInfo(playerID, clubID):
+def fetchPlayerInfo(playerID):
 
-	soup = getSoup( "http://mycricket.cricket.com.au/common/pages/public/rv/cricket/viewplayer.aspx?save=0&clubid="+str(clubID)+"&entityid="+str(clubID)+"&playerid="+str(playerID) )
+	soup = getSoup( "http://mycricket.cricket.com.au/common/pages/public/rv/cricket/viewplayer.aspx?playerid="+str(playerID) )
 
 	# Get Player Name
 	fullName = soup.select("#lblPlayerName")[0].text
@@ -157,45 +171,69 @@ def fetchPlayerInfo(playerID, clubID):
 
 	# Insert into PlayerInfo table
 	playerDB = "Player Databases/" + str(playerID) + ".db"
-	conn = sqlite3.connect(playerDB)
-	c = conn.cursor()
-	c.execute("INSERT OR IGNORE INTO PlayerInfo (PlayerID, FirstName, LastName, NumMatches) values (?,?,?,?)", (playerID, firstName, lastName, numMatches) )
-	c.execute("UPDATE PlayerInfo SET NumMatches=? WHERE PlayerID = ?", (numMatches, playerID) ) 
-	conn.commit()
+			
+	query = "INSERT OR IGNORE INTO PlayerInfo (PlayerID, FirstName, LastName, NumMatches) VALUES (?,?,?,?)"
+	values = (playerID, firstName, lastName, numMatches)
+	dbQuery(playerDB,query,values)
+
+	query = "UPDATE PlayerInfo SET NumMatches=? WHERE PlayerID = ?"
+	values = (numMatches, playerID)
+	dbQuery(playerDB,query,values)
 
 	if debug:
-		print "PlayerInfo Database Updated."
+		print "PlayerInfo Table Updated."
 
-	conn.close()
+	# Get clubs
+	clubList = soup.select('#ddlOtherClubs > option')#[0].value
+	for thing in clubList:
+		query = "INSERT OR IGNORE INTO Clubs (ClubID, ClubName) VALUES (?,?)"
+		values = (thing['value'], thing.text)
+		dbQuery(playerDB,query,values)
 
-# Fetches the list of clubs that a player has played for
+# Returns the list of clubIDs for clubs that a player has played for
 def getClubList(playerID):
-	print "TODO"
+	playerDB = "Player Databases/" + str(playerID) + ".db"
+
+	clubList = dbQuery(playerDB, "SELECT * from Clubs")
+
+	return clubList
+
 
 # Fetches the list of all of the season a player has played for a club
-def getSeasonList(playerID, clubID):
-
-	soup = getSoup( "http://mycricket.cricket.com.au/cricket/reports/playercareerbatting.asp?save=0&playerid="+str(playerID)+"&eid="+str(clubID) )
-
-	childList = soup.find_all('td', string="ALL GRADES")
+def getSeasonList(playerID):#, clubID):
 
 	seasonList = []
 
-	for child in childList:
-		parent = child.find_parent("tr")['onclick']
-		#print parent
-		front = 10 + len( str(playerID) ) + len( str( clubID) )
-		end = 15
-		seasonID = parent[front:len(parent)-end]
-		#print seasonID
-		seasonList.append(seasonID)
+	clubList = getClubList(playerID)
+
+	for club in clubList:
+
+		clubID = club[0]
+
+		soup = getSoup( "http://mycricket.cricket.com.au/cricket/reports/playercareerbatting.asp?save=0&playerid="+str(playerID)+"&eid="+str(clubID) )
+
+		childList = soup.find_all('td', string="ALL GRADES")
+
+		for child in childList:
+			parent = child.find_parent("tr")['onclick']
+			#print parent
+			front = 10 + len( str(playerID) ) + len( str( clubID) )
+			end = 15
+			seasonID = parent[front:len(parent)-end]
+			#print seasonID
+			if seasonID not in seasonList:
+				seasonList.append(seasonID)
 
 	return seasonList
 
-# Fetches the list of all matches a player has played, given a list of seasons 
+# Fetches the list of all matches a player has played, given a list of seasons
 def getMatchList(playerID, clubID, seasonList):
+# Replace this with SQL? populateDBFirstPast is already getting all the MatchIDs
+# Just fetch them that way instead.
 
 	matchList = []
+
+	clubList = getClubList(playerID)
 
 	# For each season in list, get list of matches, and add them to matchList
 	for season in seasonList:
@@ -217,7 +255,9 @@ def getMatchList(playerID, clubID, seasonList):
 	return matchList
 
 # First pass at populating the player database. Fetches as much information as possible without opening individual scorecard views
-def populateDatabaseFirstPass(playerID, clubID, seasonList):
+def populateDatabaseFirstPass(playerID):
+
+	seasonList = getSeasonList(playerID)
 
 	playerDB = "Player Databases/" + str(playerID) + ".db"
 
@@ -225,211 +265,222 @@ def populateDatabaseFirstPass(playerID, clubID, seasonList):
 
 	battingInningsID = 1#select (count *) from Batting ? 
 
-	#print ""
+	clubList = getClubList(playerID)
 
 	# For each season in list, get list of matches, and add them to matchList
 	for season in seasonList:
 
-		soup = getSoup( "http://mycricket.cricket.com.au/common/pages/public/rv/cricket/viewplayer.aspx?save=0&playerID="+str(playerID)+"&eID="+str(clubID)+"&entityID="+str(clubID)+"&seasonID="+str(season) )
+		for club in clubList:
 
-		seasonText = soup.select("select#rvsbSeason_lc > option[selected='selected']")[0].string
-		#print seasonText
+			clubID = str(club[0])
 
-		matches = soup.select("tr.row")#find_all("tr", class_="row")
-
-		prevMatchInfo = {}
-		#if True:
-		#	match = matches[2]
-		for match in matches:
-			matchOnclickText = match['onclick']
-			#print matchOnclickText
-			matchID = matchOnclickText[7:len(str(matchOnclickText))-2]
-
-			innings = 0
-
-			tds = match.select("td")
-
-			superDebug = False
-			if superDebug:
-				print str(len(tds))
-				i = 0
-				for thing in tds:
-					print str(i) + " : " + str(thing)
-					i += 1
-
-			# Fetch Match Specific Info
-
-			grade = tds[0].string
-
-			if grade == None:
-				innings = 2
-				if debug:
-					print "Multi Innings Match - Fetching Previous Info"
-				grade = prevMatchInfo['grade']
-				Round = prevMatchInfo['Round']
-				opponent = prevMatchInfo['opponent']
-				ground = prevMatchInfo['ground']
-				homeOrAway = prevMatchInfo['homeOrAway']
-				winOrLoss = prevMatchInfo['winOrLoss']
-				fullScorecardAvailable = prevMatchInfo['fullScorecardAvailable']
-
-
-			else:
-				innings = 1
-
-				Round = tds[1].string
-
-				opponent = tds[3].select("span")[0].string.replace("'","")
-
-				ground = unknown
-
-				homeOrAway = unknown
-				regex = re.findall( r'(red|green)', tds[4].select("img")[0]["src"] )[0]
-				if regex == "green":
-					homeOrAway = "Home"
-				elif regex == "red":
-					homeOrAway = "Away"
-
-				winOrLoss = unknown
-				
-				fullScorecardAvailable = unknown
-
-			# Fetch Batting Specific Info
-
-			batting = match.select("td.batting")
-
-			if batting[0].string.encode("ascii", "ignore") != '':
-				battingRuns = int(batting[0].string)
-				battingPos = int(batting[1].string)
-				battingOut = batting[2].string
-
-			# Fetch Bowling Specific Info
-
-			bowling = match.select("td.bowling")
-
-			if bowling[0].string.encode("ascii", "ignore") != '':
-				
-				bowlingovers = bowling[0].string
-
-				temp = bowling[1].string
-				if temp.encode("ascii", "ignore") != '':
-					bowlingMaidens = int(temp)
+			soup = getSoup( "http://mycricket.cricket.com.au/common/pages/public/rv/cricket/viewplayer.aspx?save=0&playerID="+str(playerID)+"&eID="+str(clubID)+"&entityID="+str(clubID)+"&seasonID="+str(season) )
+	
+			seasonText = soup.select("select#rvsbSeason_lc > option[selected='selected']")[0].string
+			#print seasonText
+	
+			matches = soup.select("tr.row")#find_all("tr", class_="row")
+	
+			prevMatchInfo = {}
+			#if True:
+			#	match = matches[2]
+			for match in matches:
+				matchOnclickText = match['onclick']
+				#print matchOnclickText
+				matchID = matchOnclickText[7:len(str(matchOnclickText))-2]
+	
+				innings = 0
+	
+				tds = match.select("td")
+	
+				superDebug = False
+				if superDebug:
+					print str(len(tds))
+					i = 0
+					for thing in tds:
+						print str(i) + " : " + str(thing)
+						i += 1
+	
+				# Fetch Match Specific Info
+	
+				grade = tds[0].string
+	
+				if grade == None:
+					innings = 2
+					if debug:
+						print "Multi Innings Match - Fetching Previous Info"
+					grade = prevMatchInfo['grade']
+					Round = prevMatchInfo['Round']
+					opponent = prevMatchInfo['opponent']
+					ground = prevMatchInfo['ground']
+					homeOrAway = prevMatchInfo['homeOrAway']
+					winOrLoss = prevMatchInfo['winOrLoss']
+					fullScorecardAvailable = prevMatchInfo['fullScorecardAvailable']
+					captain = prevMatchInfo['captain']
+	
+	
 				else:
-					bowlingMaidens = 0
-				
-				temp = bowling[2].string
-				if temp.encode("ascii", "ignore") != '':
-					bowlingWickets = int(temp)
-				else:
-					bowlingWickets = 0
-
-				temp = bowling[3].string
-				if temp.encode("ascii", "ignore") != '':	
-					bowlingRuns = int(temp)
-				else:
-					print "I dont think stats from this match should be included."
-					bowlingRuns = 0
-
-			# Fetch Fielding Specific Info
-			# len fielding 5
-			# Catches, CatchesWK, RunoutUnassisted, RunoutAssisted, Stumping
-
-			fielding = match.select("td.fielding")
-
-			### DB Inserts into various tables
-			##
-			# 
-
-			#Matches
-			if matchID not in matchList:
-				# It wont be in DB so insert
-				query = "INSERT INTO Matches (MatchID, Season, Round, Grade, Opponent, Ground, HomeOrAway, WinOrLoss, FullScorecardAvailable ) VALUES (?,?,?,?,?,?,?,null,null)"#?,?)"
-				values = (matchID, seasonText, Round, grade, opponent, ground, homeOrAway)#, winOrLoss, fullScorecardAvailable)
-				
-				dbQuery(playerDB,query,values)
-
-				matchList.append(matchID)
-
-
-				# If Debug Print Match Info 
-				if debug:
-
-					#Match Info
-					print "MatchID: " + str(matchID)
-					print "Season: " + seasonText
-					print "Round: " + str(Round)
-					print "Grade: " + str(grade)
-					print "Innings: " + str(innings)# Not in Matches Table
-					print "Opponent: " + opponent
-					print "Ground: " + ground
-					print "HomeOrAway: " + homeOrAway
-					print "WinOrLoss: " + winOrLoss
-					print "FullScorecardAvailable: " + fullScorecardAvailable
-
-			#Batting
-			if batting[0].string.encode("ascii", "ignore") != '':
-
-				query = "INSERT INTO Batting (BattingInningsID, MatchID, Innings, Runs, Position, HowDismissed, Fours, Sixes, TeamWicketsLost, TeamScore, TeamOversFaced) VALUES (?,?,?,?,?,?,null,null,null,null,null)"
-				values = (battingInningsID, matchID, innings, battingRuns, battingPos, battingOut)#, unknown, unknown, unknown, unknown, unknown)
-
-				dbQuery(playerDB,query,values)
-
-				battingInningsID += 1
-
-				# If Debug Print Batting/Innings Info
-				if debug:
-					print "Batting Figures:"
-					print "\tRuns: " + str(battingRuns)
-					print "\tPosition: " + str(battingPos)
-					print "\tHow out: " + battingOut
-
-
-			#Bowling
-			if bowling[0].string.encode("ascii", "ignore") != '':
-
-
-				# If Debug Print Bowling/Innings Info
-				if debug:
-					print "Bowling Figures:"
-					print "\tOvers: " + bowlingovers
-					print "\tMaidens: " + str(bowlingMaidens)
-					print "\tWickets: " + str(bowlingWickets)
-					print "\tRuns: " + str(bowlingRuns)
-
-			#Fielding
-			#if fielding[0].string.encode("ascii", "ignore") != '':
-			#	print "Fielding Figures:"
-
-
-
-
-			# Fetch High Level Batting, Bowling and Fielding stats
-			# Insert into relevant tables.
-
-
-			prevMatchInfo = {
-				'matchID': matchID,
-				'seasonText': seasonText,
-				'Round': Round,
-				'grade': grade,
-				'opponent': opponent,
-				'ground': ground,
-				'homeOrAway': homeOrAway,
-				'winOrLoss': winOrLoss,
-				'fullScorecardAvailable': fullScorecardAvailable
-			}
-
-			#print ""
-
-		# Courtesy sleep, to reduce load on myCricket. Probs re-enable before release?
-		#time.sleep(5)
+					innings = 1
+	
+					Round = tds[1].string
+	
+					opponent = tds[3].select("span")[0].string.replace("'","")
+	
+					ground = unknown
+	
+					homeOrAway = unknown
+					regex = re.findall( r'(red|green)', tds[4].select("img")[0]["src"] )[0]
+					if regex == "green":
+						homeOrAway = "Home"
+					elif regex == "red":
+						homeOrAway = "Away"
+	
+					winOrLoss = unknown
+					
+					fullScorecardAvailable = unknown
+	
+					captain = unknown
+	
+				# Fetch Batting Specific Info
+	
+				batting = match.select("td.batting")
+	
+				if batting[0].string.encode("ascii", "ignore") != '':
+					battingRuns = int(batting[0].string)
+					battingPos = int(batting[1].string)
+					battingOut = batting[2].string
+	
+				# Fetch Bowling Specific Info
+	
+				bowling = match.select("td.bowling")
+	
+				if bowling[0].string.encode("ascii", "ignore") != '':
+					
+					bowlingovers = bowling[0].string
+	
+					temp = bowling[1].string
+					if temp.encode("ascii", "ignore") != '':
+						bowlingMaidens = int(temp)
+					else:
+						bowlingMaidens = 0
+					
+					temp = bowling[2].string
+					if temp.encode("ascii", "ignore") != '':
+						bowlingWickets = int(temp)
+					else:
+						bowlingWickets = 0
+	
+					temp = bowling[3].string
+					if temp.encode("ascii", "ignore") != '':	
+						bowlingRuns = int(temp)
+					else:
+						print "I dont think stats from this match should be included."
+						bowlingRuns = 0
+	
+				# Fetch Fielding Specific Info
+				# len fielding 5
+				# Catches, CatchesWK, RunoutUnassisted, RunoutAssisted, Stumping
+	
+				fielding = match.select("td.fielding")
+	
+				### DB Inserts into various tables
+				##
+				# 
+	
+				#Matches
+				if matchID not in matchList:
+					# It wont be in DB so insert
+					query = "INSERT OR IGNORE INTO Matches (MatchID, ClubID, Season, Round, Grade, Opponent, Ground, HomeOrAway, WinOrLoss, FullScorecardAvailable, Captain ) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+					values = (matchID, clubID, seasonText, Round, grade, opponent, ground, homeOrAway, winOrLoss, fullScorecardAvailable, captain)
+					
+					dbQuery(playerDB,query,values)
+	
+					matchList.append(matchID)
+	
+	
+					# If Debug Print Match Info 
+					if debug:
+	
+						#Match Info
+						print "MatchID: " + str(matchID)
+						print "ClubID: " + str(clubID)
+						print "Season: " + seasonText
+						print "Round: " + str(Round)
+						print "Grade: " + str(grade)
+						print "Innings: " + str(innings)# Not in Matches Table
+						print "Opponent: " + opponent
+						print "Ground: " + ground
+						print "HomeOrAway: " + homeOrAway
+						print "WinOrLoss: " + winOrLoss
+						print "FullScorecardAvailable: " + fullScorecardAvailable
+						print "Captain: " + captain
+	
+				#Batting
+				if batting[0].string.encode("ascii", "ignore") != '':
+	
+					query = "INSERT OR IGNORE INTO Batting (BattingInningsID, MatchID, Innings, Runs, Position, HowDismissed, Fours, Sixes, TeamWicketsLost, TeamScore, TeamOversFaced) VALUES (?,?,?,?,?,?,null,null,null,null,null)"
+					values = (battingInningsID, matchID, innings, battingRuns, battingPos, battingOut)#, unknown, unknown, unknown, unknown, unknown)
+	
+					dbQuery(playerDB,query,values)
+	
+					battingInningsID += 1
+	
+					# If Debug Print Batting/Innings Info
+					if debug:
+						print "Batting Figures:"
+						print "\tRuns: " + str(battingRuns)
+						print "\tPosition: " + str(battingPos)
+						print "\tHow out: " + battingOut
+	
+	
+				#Bowling
+				if bowling[0].string.encode("ascii", "ignore") != '':
+	
+	
+					# If Debug Print Bowling/Innings Info
+					if debug:
+						print "Bowling Figures:"
+						print "\tOvers: " + bowlingovers
+						print "\tMaidens: " + str(bowlingMaidens)
+						print "\tWickets: " + str(bowlingWickets)
+						print "\tRuns: " + str(bowlingRuns)
+	
+				#Fielding
+				#if fielding[0].string.encode("ascii", "ignore") != '':
+				#	print "Fielding Figures:"
+	
+	
+	
+	
+				# Fetch High Level Batting, Bowling and Fielding stats
+				# Insert into relevant tables.
+	
+	
+				prevMatchInfo = {
+					'matchID': matchID,
+					'clubID': clubID,
+					'seasonText': seasonText,
+					'Round': Round,
+					'grade': grade,
+					'opponent': opponent,
+					'ground': ground,
+					'homeOrAway': homeOrAway,
+					'winOrLoss': winOrLoss,
+					'fullScorecardAvailable': fullScorecardAvailable,
+					'captain': captain
+				}
+	
+				#print ""
+	
+			# Courtesy sleep, to reduce load on myCricket. Probs re-enable before release?
+			#time.sleep(5)
 
 # Second pass at populating the player database. Goes through scorecards (if available) for all games in matchList
-def populateDatabaseSecondPass(playerID, clubID, matchList):
+def populateDatabaseSecondPass(playerID):
 	print "TODO"
 
 # Third pass at populating the player database. Specifically concerning the TeamMates and TeamMatesMatches tables.
-def populateDatabaseThirdPass(playerID, clubID, matchList):
+def populateDatabaseThirdPass(playerID):
 	print "TODO"
 
 ### Phase 2 - Analyse data and present statistics
@@ -513,7 +564,7 @@ def stats_Overall(playerID):
 	printStats(headers, stats)
 
 # Batting stats by Season
-def stats_Season(playerID, clubID):
+def stats_Season(playerID):
 	playerDB = "Player Databases/" + str(playerID) + ".db"
 
 	print "Stats by Season\n"
@@ -632,11 +683,35 @@ def stats_HomeOrAway(playerID):
 
 # Batting stats by NohitBrohitLine
 def stats_NohitBrohitLine(playerID):
-	print "TODO"
+	playerDB = "Player Databases/" + str(playerID) + ".db"
+
+	print "Nohit/Brohit Line!\n"
+
+	print median(dbQuery(playerDB, "SELECT Runs from Batting ORDER BY Runs ASC"))
 
 # Batting stats by Bingo
 def stats_Bingo(playerID):
-	print "TODO"
+	playerDB = "Player Databases/" + str(playerID) + ".db"
+
+	print "Bingo!\n"
+
+	bingoList = dbQuery(playerDB, "SELECT DISTINCT Runs from Batting ORDER BY Runs ASC")
+
+	formattedBingoList = [ i[0] for i in bingoList ]
+
+	missingNumbers = []
+
+	for i in range( 0, formattedBingoList[-1]+1 ):
+		if i not in formattedBingoList:
+			missingNumbers.append(i)
+
+	print "Hit"
+	print formattedBingoList
+	print "Miss"
+	print missingNumbers
+	print ""
+
+	# Find next bingo number
 
 ## Need Fetch Pass 2
 
@@ -644,9 +719,17 @@ def stats_Bingo(playerID):
 def stats_Ground(playerID):
 	print "TODO"
 
-# Batting stats by PercentOfTeamScore
-def stats_PercentOfTeamScore(playerID):
+# Batting stats by PercentOfTeam
+def stats_PercentOfTeam(playerID):
 	print "TODO"
+
+	# % of Team Runs for each game
+	# Min, Max, Average
+
+	# % of Team Overs faced for each game
+	# Min, Max, Average
+	# Hard/potentially impossible to calculate from MyCricket
+	# FOW data doesn't have overs (when it is even there)
 
 ## Need Fetch Pass 3
 
