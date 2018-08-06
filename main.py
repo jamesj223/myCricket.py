@@ -18,7 +18,6 @@ analysis = True
 
 # Get Player ID
 playerID = int(input("Enter PlayerID: "))
-clubID = int(input("Enter ClubID: "))
 
 playerDB = "Player Databases/" + str(playerID) + ".db"
 
@@ -33,21 +32,13 @@ createDatabase(playerID, wipe)
 
 if fetch:
 
-	fetchPlayerInfo(playerID, clubID)
+	fetchPlayerInfo(playerID)
 
-	seasonList = getSeasonList(playerID,clubID)
+	populateDatabaseFirstPass(playerID)
 
-	print "Seasons found: " + str(len(seasonList))
+	#populateDatabaseSecondPass(playerID)
 
-	matchList = getMatchList(playerID, clubID, seasonList)
-
-	print "Matches found: " + str(len(matchList))
-
-	populateDatabaseFirstPass(playerID,clubID,seasonList)
-
-	#populateDatabaseSecondPass(playerID,clubID,matchList)
-
-	#populateDatabaseThirdPass(playerID,clubID,matchList)
+	#populateDatabaseThirdPass(playerID)
 
 if analysis:
 
@@ -55,16 +46,20 @@ if analysis:
 
 	stats_Overall(playerID)
 
-	stats_Season(playerID, clubID)
+	stats_Season(playerID)
 
-	stats_DismissalBreakdown(playerID)
+	#stats_DismissalBreakdown(playerID)
 
-	stats_Position(playerID)
+	#stats_Position(playerID)
 
-	stats_Opponent(playerID)
+	#stats_Opponent(playerID)
 
-	stats_Grade(playerID)
+	#stats_Grade(playerID)
 
-	stats_HomeOrAway(playerID)
+	#stats_HomeOrAway(playerID)
 
 	# Fun Stats
+
+	#stats_NohitBrohitLine(playerID)
+	
+	#stats_Bingo(playerID)
