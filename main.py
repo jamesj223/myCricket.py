@@ -42,24 +42,38 @@ if fetch:
 
 if analysis:
 
-	# Normal Stats
+	## Normal Stats
 
-	stats_Overall(playerID)
+	#stats_Batting_Overall(playerID)
 
-	stats_Season(playerID)
+	#stats_Batting_Season(playerID)
 
-	#stats_DismissalBreakdown(playerID)
+	#stats_Batting_Club(playerID)
 
-	#stats_Position(playerID)
+	#stats_Batting_DismissalBreakdown(playerID)
 
-	#stats_Opponent(playerID)
+	#stats_Batting_Position(playerID)
 
-	#stats_Grade(playerID)
+	#stats_Batting_Opponent(playerID)
 
-	#stats_HomeOrAway(playerID)
+	#stats_Batting_Grade(playerID)
 
-	# Fun Stats
+	#stats_Batting_HomeOrAway(playerID)
 
-	#stats_NohitBrohitLine(playerID)
+	## Fun Stats
+
+	#stats_Batting_NohitBrohitLine(playerID)
 	
-	#stats_Bingo(playerID)
+	#stats_Batting_Bingo(playerID)
+
+	## Bowling Stats
+
+	#stats_Bowling_Overall(playerID)
+
+	#stats_Bowling_Workload(playerID)
+
+	## Higher Level Reports
+
+	stats_Batting_Recent(playerID, 5)
+
+	stats_Bowling_Recent(playerID, 5)
