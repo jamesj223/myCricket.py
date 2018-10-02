@@ -14,6 +14,9 @@ from numpy import median
 ###############################################################################
 # DB Schemas
 
+# Add fetched level? That way stats functions know whether they can run
+# Could have the stats functions call the relevant fetch function if it hasn't already been run
+# Maybe later
 playerInfoTable = "PlayerInfo (PlayerID INTEGER PRIMARY KEY, FirstName TEXT, LastName TEXT, NumMatches INTEGER)"
 
 clubsTable = "Clubs (ClubID INTEGER PRIMARY KEY, ClubName TEXT)"
@@ -26,13 +29,13 @@ bowlingTable = "Bowling (BowlingInningsID INTEGER PRIMARY KEY, MatchID INTEGER, 
 
 fieldingTable = "Fielding (FieldingInningsID INTEGER PRIMARY KEY, MatchID INTEGER, Catches INTEGER, RunOuts INTEGER, FOREIGN KEY (MatchID) REFERENCES Matches(MatchID))"
 
-
-
 # Not Yet Implemented
 
 teamMatesTable = "TeamMates (PlayerID INTEGER PRIMARY KEY, FirstName TEXT, LastName Text)"
 
 teamMatesMatchesTable = "TeamMatesMatches (MatchID INTEGER, PlayerID INTEGER, FOREIGN KEY (MatchID) REFERENCES Matches(MatchID), FOREIGN KEY (PlayerID) REFERENCES TeamMates(PlayerID))"
+
+# Placeholder value for missing information
 
 unknown = "Unknown"
 
@@ -54,7 +57,7 @@ def getSoup(url):
 	a = url
 
 	if debug:
-			print('Downloading page')# %s' % url)
+			print('Downloading page %s' % url)
 
 	res = requests.get(a)
 	res.raise_for_status()
@@ -75,59 +78,55 @@ def createDatabase(playerID, wipe=False):
 	if not os.path.exists(playerDB):
 		open(playerDB, 'a').close()
 
-	conn = sqlite3.connect(playerDB)
-
-	c = conn.cursor()
-
 	if wipe:
-		c.execute("DROP TABLE IF EXISTS PlayerInfo;")
-		c.execute("DROP TABLE IF EXISTS Clubs;")
-		c.execute("DROP TABLE IF EXISTS Matches;")
-		c.execute("DROP TABLE IF EXISTS Batting;")
-		c.execute("DROP TABLE IF EXISTS Bowling;")
-		c.execute("DROP TABLE IF EXISTS Fielding;")
-		conn.commit()
+
+		dbQuery(playerDB,"DROP TABLE IF EXISTS PlayerInfo;")
+		dbQuery(playerDB,"DROP TABLE IF EXISTS Clubs;")
+		dbQuery(playerDB,"DROP TABLE IF EXISTS Matches;")
+		dbQuery(playerDB,"DROP TABLE IF EXISTS Batting;")
+		dbQuery(playerDB,"DROP TABLE IF EXISTS Bowling;")
+		dbQuery(playerDB,"DROP TABLE IF EXISTS Fielding;")
 
 		if debug:
 			print "Dropping all existing tables."
 
 	# PlayerInfo
 
-	c.execute("CREATE TABLE IF NOT EXISTS " + playerInfoTable + ";")
-	conn.commit()
+	dbQuery(playerDB,"CREATE TABLE IF NOT EXISTS " + playerInfoTable + ";")
+
 	if debug:
 		print "Created table: PlayerInfo" 
 
-	c.execute("CREATE TABLE IF NOT EXISTS " + clubsTable + ";")
-	conn.commit()
+	dbQuery(playerDB,"CREATE TABLE IF NOT EXISTS " + clubsTable + ";")
+
 	if debug:
 		print "Created table: Clubs" 
 
 	# Matches - Teammates Extracted out into Join Table?
-	c.execute("CREATE TABLE IF NOT EXISTS " + matchesTable + ";")
-	conn.commit()
+	dbQuery(playerDB,"CREATE TABLE IF NOT EXISTS " + matchesTable + ";")
+
 	if debug:
 		print "Created table: Matches" 
 
 	# Batting
-	c.execute("CREATE TABLE IF NOT EXISTS " + battingTable + ";")
-	conn.commit()
+	dbQuery(playerDB,"CREATE TABLE IF NOT EXISTS " + battingTable + ";")
+
 	if debug:
 		print "Created table: Batting" 
 
 	# Bowling
-	c.execute("CREATE TABLE IF NOT EXISTS " + bowlingTable + ";")
-	conn.commit()
+	dbQuery(playerDB,"CREATE TABLE IF NOT EXISTS " + bowlingTable + ";")
+
 	if debug:
 		print "Created table: Bowling" 
 
 	# Fielding
-	c.execute("CREATE TABLE IF NOT EXISTS " + fieldingTable + ";")
-	conn.commit()
+	dbQuery(playerDB,"CREATE TABLE IF NOT EXISTS " + fieldingTable + ";")
+
 	if debug:
 		print "Created table: Fielding" 
 
-	conn.close()
+
 
 # Runs the supplied query against the specified database
 def dbQuery(database, query, values=() ):
@@ -185,9 +184,15 @@ def fetchPlayerInfo(playerID):
 
 	# Get clubs
 	clubList = soup.select('#ddlOtherClubs > option')#[0].value
+
+	if debug:
+		print clubList
+
 	for thing in clubList:
+		if debug:
+			print thing.contents
 		query = "INSERT OR IGNORE INTO Clubs (ClubID, ClubName) VALUES (?,?)"
-		values = (thing['value'], thing.text)
+		values = ( thing['value'], thing.contents[0].string.replace("'","") )
 		dbQuery(playerDB,query,values)
 
 # Returns the list of clubIDs for clubs that a player has played for
@@ -263,7 +268,9 @@ def populateDatabaseFirstPass(playerID):
 
 	matchList = []
 
-	battingInningsID = 1#select (count *) from Batting ? 
+	battingInningsID = 1#select (count *) from Batting ?
+
+	bowlingInningsID = 1 
 
 	clubList = getClubList(playerID)
 
@@ -356,7 +363,7 @@ def populateDatabaseFirstPass(playerID):
 	
 				if bowling[0].string.encode("ascii", "ignore") != '':
 					
-					bowlingovers = bowling[0].string
+					bowlingOvers = bowling[0].string
 	
 					temp = bowling[1].string
 					if temp.encode("ascii", "ignore") != '':
@@ -392,11 +399,9 @@ def populateDatabaseFirstPass(playerID):
 					# It wont be in DB so insert
 					query = "INSERT OR IGNORE INTO Matches (MatchID, ClubID, Season, Round, Grade, Opponent, Ground, HomeOrAway, WinOrLoss, FullScorecardAvailable, Captain ) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
 					values = (matchID, clubID, seasonText, Round, grade, opponent, ground, homeOrAway, winOrLoss, fullScorecardAvailable, captain)
-					
 					dbQuery(playerDB,query,values)
 	
 					matchList.append(matchID)
-	
 	
 					# If Debug Print Match Info 
 					if debug:
@@ -420,7 +425,6 @@ def populateDatabaseFirstPass(playerID):
 	
 					query = "INSERT OR IGNORE INTO Batting (BattingInningsID, MatchID, Innings, Runs, Position, HowDismissed, Fours, Sixes, TeamWicketsLost, TeamScore, TeamOversFaced) VALUES (?,?,?,?,?,?,null,null,null,null,null)"
 					values = (battingInningsID, matchID, innings, battingRuns, battingPos, battingOut)#, unknown, unknown, unknown, unknown, unknown)
-	
 					dbQuery(playerDB,query,values)
 	
 					battingInningsID += 1
@@ -436,11 +440,17 @@ def populateDatabaseFirstPass(playerID):
 				#Bowling
 				if bowling[0].string.encode("ascii", "ignore") != '':
 	
-	
+
+					query = "INSERT OR IGNORE INTO Bowling (bowlingInningsID, MatchID, Innings, Overs, Wickets, Runs, Maidens) VALUES (?,?,?,?,?,?,?)"
+					values = (bowlingInningsID, matchID, innings, bowlingOvers, bowlingWickets, bowlingRuns, bowlingMaidens)#, unknown, unknown, unknown, unknown, unknown)
+					dbQuery(playerDB,query,values)
+
+					bowlingInningsID += 1
+
 					# If Debug Print Bowling/Innings Info
 					if debug:
 						print "Bowling Figures:"
-						print "\tOvers: " + bowlingovers
+						print "\tOvers: " + bowlingOvers
 						print "\tMaidens: " + str(bowlingMaidens)
 						print "\tWickets: " + str(bowlingWickets)
 						print "\tRuns: " + str(bowlingRuns)
@@ -449,12 +459,8 @@ def populateDatabaseFirstPass(playerID):
 				#if fielding[0].string.encode("ascii", "ignore") != '':
 				#	print "Fielding Figures:"
 	
-	
-	
-	
 				# Fetch High Level Batting, Bowling and Fielding stats
 				# Insert into relevant tables.
-	
 	
 				prevMatchInfo = {
 					'matchID': matchID,
@@ -484,6 +490,23 @@ def populateDatabaseThirdPass(playerID):
 	print "TODO"
 
 ### Phase 2 - Analyse data and present statistics
+
+# Print function
+def printStats(headers, stats):
+	mode = "V"#"Horizontal"
+
+	if mode == "H":#"Horizontal":
+		if headers:
+			print headers
+		if stats:
+			print stats
+
+	elif mode == "V":#"Vertical":
+		if headers and stats:
+			for i in range(len(headers)):
+				print headers[i] + ': ' + str( stats[i] )
+
+	print ""
 
 # Calculate and return batting stats for a list of innings
 def getBattingStats(inningsList):
@@ -526,31 +549,13 @@ def getBattingStats(inningsList):
 	except ZeroDivisionError:
 		average = "N/A"
 
-
 	# Compile stats into tuple
 	stats = (numInnings, highScore, notOuts, ducks, twentyFives, fifties, hundreds, aggregate, average)
 
 	return headers, stats
 
-# Print function
-def printStats(headers, stats):
-	mode = "V"#"Horizontal"
-
-	if mode == "H":#"Horizontal":
-		if headers:
-			print headers
-		if stats:
-			print stats
-
-	elif mode == "V":#"Vertical":
-		if headers and stats:
-			for i in range(len(headers)):
-				print headers[i] + ': ' + str( stats[i] )
-
-	print ""
-
 # Analyse all batting innings for player
-def stats_Overall(playerID):
+def stats_Batting_Overall(playerID):
 	playerDB = "Player Databases/" + str(playerID) + ".db"
 
 	print "Overall Batting Summary"	
@@ -564,7 +569,7 @@ def stats_Overall(playerID):
 	printStats(headers, stats)
 
 # Batting stats by Season
-def stats_Season(playerID):
+def stats_Batting_Season(playerID):
 	playerDB = "Player Databases/" + str(playerID) + ".db"
 
 	print "Stats by Season\n"
@@ -587,8 +592,10 @@ def stats_Season(playerID):
 		# Print stats
 		printStats(headers, stats)
 
+
+
 # Batting stats by DismissalBreakdown
-def stats_DismissalBreakdown(playerID):
+def stats_Batting_DismissalBreakdown(playerID):
 	playerDB = "Player Databases/" + str(playerID) + ".db"
 
 	print "Dismissal Breakdown\n"
@@ -604,7 +611,7 @@ def stats_DismissalBreakdown(playerID):
 	printStats(headers, stats)
 
 # Batting stats by Batting Position
-def stats_Position(playerID):
+def stats_Batting_Position(playerID):
 	playerDB = "Player Databases/" + str(playerID) + ".db"
 
 	print "Batting Position\n"
@@ -621,7 +628,7 @@ def stats_Position(playerID):
 		printStats(headers, stats)
 
 # Batting stats by Opponent
-def stats_Opponent(playerID):
+def stats_Batting_Opponent(playerID):
 	playerDB = "Player Databases/" + str(playerID) + ".db"
 
 	print "Stats by Opponent\n"	
@@ -641,7 +648,7 @@ def stats_Opponent(playerID):
 		printStats(headers, stats)
 
 # Batting stats by Grade
-def stats_Grade(playerID):
+def stats_Batting_Grade(playerID):
 	playerDB = "Player Databases/" + str(playerID) + ".db"
 
 	print "Stats by Grade\n"	
@@ -661,20 +668,20 @@ def stats_Grade(playerID):
 		printStats(headers, stats)
 
 # Batting stats by HomeOrAway
-def stats_HomeOrAway(playerID):
+def stats_Batting_HomeOrAway(playerID):
 	playerDB = "Player Databases/" + str(playerID) + ".db"
 
 	print "Stats by Home/Away\n"
 
 	print "Home"
-	matchList = seasonList = dbQuery(playerDB, "SELECT MatchID FROM Matches WHERE HomeOrAway='Home'")
+	matchList = dbQuery(playerDB, "SELECT MatchID FROM Matches WHERE HomeOrAway='Home'")
 	formattedMatchList = "(" + ','.join( [str( i[0] ) for i in matchList] ) + ")"
 	inningsList = dbQuery(playerDB, "SELECT * FROM Batting WHERE MatchID IN " + formattedMatchList) 
 	headers, stats = getBattingStats(inningsList)
 	printStats(headers, stats)
 
 	print "Away"
-	matchList = seasonList = dbQuery(playerDB, "SELECT MatchID FROM Matches WHERE HomeOrAway='Away'")
+	matchList = dbQuery(playerDB, "SELECT MatchID FROM Matches WHERE HomeOrAway='Away'")
 	formattedMatchList = "(" + ','.join( [str( i[0] ) for i in matchList] ) + ")"
 	inningsList = dbQuery(playerDB, "SELECT * FROM Batting WHERE MatchID IN " + formattedMatchList) 
 	headers, stats = getBattingStats(inningsList)
@@ -682,7 +689,7 @@ def stats_HomeOrAway(playerID):
 
 
 # Batting stats by NohitBrohitLine
-def stats_NohitBrohitLine(playerID):
+def stats_Batting_NohitBrohitLine(playerID):
 	playerDB = "Player Databases/" + str(playerID) + ".db"
 
 	print "Nohit/Brohit Line!\n"
@@ -690,12 +697,12 @@ def stats_NohitBrohitLine(playerID):
 	print median(dbQuery(playerDB, "SELECT Runs from Batting ORDER BY Runs ASC"))
 
 # Batting stats by Bingo
-def stats_Bingo(playerID):
+def stats_Batting_Bingo(playerID):
 	playerDB = "Player Databases/" + str(playerID) + ".db"
 
 	print "Bingo!\n"
 
-	bingoList = dbQuery(playerDB, "SELECT DISTINCT Runs from Batting ORDER BY Runs ASC")
+	bingoList = dbQuery(playerDB, "SELECT DISTINCT Runs FROM Batting ORDER BY Runs ASC")
 
 	formattedBingoList = [ i[0] for i in bingoList ]
 
@@ -713,14 +720,30 @@ def stats_Bingo(playerID):
 
 	# Find next bingo number
 
+# Batting stats by Club
+def stats_Batting_Club(playerID):
+	playerDB = "Player Databases/" + str(playerID) + ".db"
+
+	print "Stats by Club\n"
+
+	clubList = getClubList(playerID)
+
+	for clubID, clubName in clubList:
+		print clubName
+		matchList = dbQuery(playerDB, "SELECT * FROM Matches where ClubID =" + str(clubID) )
+		formattedMatchList = "(" + ','.join( [str( i[0] ) for i in matchList] ) + ")"
+		inningsList = dbQuery(playerDB, "SELECT * FROM Batting WHERE MatchID IN " + formattedMatchList) 
+		headers, stats = getBattingStats(inningsList)
+		printStats(headers, stats)
+
 ## Need Fetch Pass 2
 
 # Batting stats by Ground
-def stats_Ground(playerID):
+def stats_Batting_Ground(playerID):
 	print "TODO"
 
 # Batting stats by PercentOfTeam
-def stats_PercentOfTeam(playerID):
+def stats_Batting_PercentOfTeam(playerID):
 	print "TODO"
 
 	# % of Team Runs for each game
@@ -734,23 +757,197 @@ def stats_PercentOfTeam(playerID):
 ## Need Fetch Pass 3
 
 # Batting stats by TeamMate
-def stats_TeamMate(playerID, minGames):
+def stats_Batting_TeamMate(playerID, minGames):
 	print "TODO"
 
 ## Need Additional Information
 
-# Batting stats by Club
-def stats_Club(playerID):
-	print "TODO"
+
 
 # Batting stats by Captain
-def stats_Captain(playerID):
+def stats_Batting_Captain(playerID):
+	print "TODO"
+
+
+## Template 
+# Batting stats by THING
+def stats_Batting_THING(playerID):
 	print "TODO"
 
 
 
+## Bowling Stats
 
+# Calculate and return bowling stats for a list of innings
+def getBowlingStats(inningsList):
+	headers = ("Innings", "Overs", "Wickets", "Runs", "Maidens", "Average", "Strike Rate", "Economy")
+
+	# Initialise and zero all variables
+	numInnings = runs = maidens = wickets = 0
+	overs = average = strikeRate = economy = 0.0
+
+	# Iterate over innings list
+	for innings in inningsList:
+		
+		numInnings += 1
+
+		overs += int( float( innings[3] ) ) # Fix this
+		wickets += innings[4]
+		maidens += innings[6]
+		runs += innings[5]
+
+	# Calculate Bowling Average (rounded to 2 decimal places)
+	try:
+		rawAverage = runs / wickets
+		average = round(rawAverage, 2)
+	except ZeroDivisionError:
+		average = "N/A"
+
+	# Calculate Bowling Strike Rate (rounded to 2 decimal places)
+	try:
+		balls = (overs * 6) # fix this
+		rawStrikeRate = balls / wickets 
+		strikeRate = round(rawStrikeRate, 2)
+	except ZeroDivisionError:
+		strikeRate = "N/A"
+
+	# Calculate Bowling Economy (rounded to 2 decimal places)
+	try:
+		rawEconomy = runs / overs # fix this
+		economy = round(rawEconomy, 2)
+	except ZeroDivisionError:
+		economy = "N/A"
+
+	# Compile stats into tuple
+	stats = (numInnings, overs, wickets, runs, maidens, average, strikeRate, economy)
+
+	return headers, stats
+
+# Analyse all batting innings for player
+def stats_Bowling_Overall(playerID):
+
+	playerDB = "Player Databases/" + str(playerID) + ".db"
+
+	print "Overall Bowling Summary"	
+
+	allBowlingInnings = dbQuery(playerDB,"SELECT * FROM Bowling")
+
+	# Get stats for all batting innings
+	headers, stats = getBowlingStats(allBowlingInnings)
+
+	# Print stats
+	printStats(headers, stats)
 
 # Batting stats by THING
-def stats_THING(playerID):
+def stats_Bowling_Workload(playerID):
 	print "TODO"
+
+	# Select all innings
+
+	# return average, max overs bowled
+
+	# return average overs bowled from non-zero games**
+
+## Higher Level Reports
+
+# Batting stats for past X seasons
+def stats_Batting_Recent(playerID, numSeasons):
+	playerDB = "Player Databases/" + str(playerID) + ".db"
+
+	print "Recent Batting Stats by Season\n"
+
+	seasonList = dbQuery(playerDB, "SELECT DISTINCT Season FROM Matches")
+
+	# Call Overall Stats
+	#stats_Batting_Overall(playerID)
+
+	# Stats for Last Season
+	matchList = []
+
+	for season in seasonList[-1:]:
+
+		#print season[0]
+
+		matchList += dbQuery(playerDB, "SELECT MatchID FROM Matches WHERE Season='" + season[0] + "'")
+
+	formattedMatchList = "(" + ','.join( [str( i[0] ) for i in matchList] ) + ")"
+
+	inningsList = dbQuery(playerDB, "SELECT * FROM Batting WHERE MatchID IN " + formattedMatchList) 
+
+	# Get stats for all batting innings for season
+	headers, stats = getBattingStats(inningsList)
+
+	# Print stats
+	print "Last Season"
+	printStats(headers, stats)
+
+	# Stats for Last X Seasons
+	matchList = []
+
+	for season in seasonList[-numSeasons:]:
+
+		#print season[0]
+
+		matchList += dbQuery(playerDB, "SELECT MatchID FROM Matches WHERE Season='" + season[0] + "'")
+
+	formattedMatchList = "(" + ','.join( [str( i[0] ) for i in matchList] ) + ")"
+
+	inningsList = dbQuery(playerDB, "SELECT * FROM Batting WHERE MatchID IN " + formattedMatchList) 
+
+	# Get stats for all batting innings for season
+	headers, stats = getBattingStats(inningsList)
+
+	# Print stats
+	print "Last " + str(numSeasons) + " Seasons"
+	printStats(headers, stats)
+
+# Bowling stats for past X seasons
+def stats_Bowling_Recent(playerID, numSeasons):
+	playerDB = "Player Databases/" + str(playerID) + ".db"
+
+	print "Recent Bowling Stats by Season\n"
+
+	seasonList = dbQuery(playerDB, "SELECT DISTINCT Season FROM Matches")
+
+	# Call Overall Stats
+	#stats_Batting_Overall(playerID)
+
+	# Stats for Last Season
+	matchList = []
+
+	for season in seasonList[-1:]:
+
+		#print season[0]
+
+		matchList += dbQuery(playerDB, "SELECT MatchID FROM Matches WHERE Season='" + season[0] + "'")
+
+	formattedMatchList = "(" + ','.join( [str( i[0] ) for i in matchList] ) + ")"
+
+	inningsList = dbQuery(playerDB, "SELECT * FROM Bowling WHERE MatchID IN " + formattedMatchList) 
+
+	# Get stats for all batting innings for season
+	headers, stats = getBowlingStats(inningsList)
+
+	# Print stats
+	print "Last Season"
+	printStats(headers, stats)
+
+	# Stats for Last X Seasons
+	matchList = []
+
+	for season in seasonList[-numSeasons:]:
+
+		#print season[0]
+
+		matchList += dbQuery(playerDB, "SELECT MatchID FROM Matches WHERE Season='" + season[0] + "'")
+
+	formattedMatchList = "(" + ','.join( [str( i[0] ) for i in matchList] ) + ")"
+
+	inningsList = dbQuery(playerDB, "SELECT * FROM Bowling WHERE MatchID IN " + formattedMatchList) 
+
+	# Get stats for all batting innings for season
+	headers, stats = getBowlingStats(inningsList)
+
+	# Print stats
+	print "Last " + str(numSeasons) + " Seasons"
+	printStats(headers, stats)
