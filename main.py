@@ -44,36 +44,37 @@ if analysis:
 
 	## Normal Stats
 
-	#stats_Batting_Overall(playerID)
+	stats_Overall(playerID, "Batting")
+	stats_Overall(playerID, "Bowling")
 
-	#stats_Batting_Season(playerID)
+	stats_Season(playerID, "Batting")
+	stats_Season(playerID, "Bowling")
 
-	#stats_Batting_Club(playerID)
+	stats_Club(playerID,"Batting")
+	stats_Club(playerID,"Bowling")
 
-	#stats_Batting_DismissalBreakdown(playerID)
+	stats_Opponent(playerID,"Batting")
+	stats_Opponent(playerID,"Bowling")
 
-	#stats_Batting_Position(playerID)
+	stats_Grade(playerID,"Batting")
+	stats_Grade(playerID,"Bowling")
 
-	#stats_Batting_Opponent(playerID)
+	stats_HomeOrAway(playerID,"Batting")
+	stats_HomeOrAway(playerID,"Bowling")
 
-	#stats_Batting_Grade(playerID)
+	stats_Recent(playerID, "Batting", 5)
+	stats_Recent(playerID, "Bowling", 5)
 
-	#stats_Batting_HomeOrAway(playerID)
+	# Batting Only
 
-	## Fun Stats
+	stats_Batting_DismissalBreakdown(playerID)
 
-	#stats_Batting_NohitBrohitLine(playerID)
+	stats_Batting_Position(playerID)
+
+	stats_Batting_NohitBrohitLine(playerID)
 	
-	#stats_Batting_Bingo(playerID)
+	stats_Batting_Bingo(playerID)
 
-	## Bowling Stats
+	# Bowling Only
 
-	#stats_Bowling_Overall(playerID)
-
-	#stats_Bowling_Workload(playerID)
-
-	## Higher Level Reports
-
-	stats_Batting_Recent(playerID, 5)
-
-	stats_Bowling_Recent(playerID, 5)
+	stats_Bowling_Workload(playerID)
